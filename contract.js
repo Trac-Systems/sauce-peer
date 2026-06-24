@@ -1,5 +1,5 @@
-// Sauce EVIDENCE LEDGER contract (PLAN §8). Our own — the trac-peer sample
-// (pokemon/timer/chat) logic is stripped. Two write paths: the admin-signed `evidence_feature` oracle
+// Sauce EVIDENCE LEDGER
+// Two write paths: the admin-signed `evidence_feature` oracle
 // (FREE; valuation/usage/earn/retraction) and the admin-gated PAID `submitEvidence` tx (submission).
 // Vault-namespaced keyspace `ev/<vault>/…` keeps the fiat and crypto stacks' evidence fully separate.
 //
@@ -7,20 +7,9 @@
 // byte-identically on every indexer. So: b4a (NOT global Buffer — bare has none), no node: builtins, no
 // Date/random/IO. Imports resolve via the Pear app's deps ('trac-peer', 'b4a').
 //
-// HARD invariants enforced here (PLAN §3 P1, §20, §22):
-//   - Loopless O(1): every handler does fixed-field checks + ONE get (dedup) + ONE put. No iteration
-//     over any collection. Cross-record aggregation happens off-ledger (in the operator), never here.
-//   - Determinism: no Date / random / IO / heavy compute. Timestamps arrive INSIDE the signed record
-//     value (the off-chain caller stamps them); the contract only stores what it is given → replays
-//     identically on every indexer.
-//   - Append-only + deduped: a key is written at most once (`if null !== get(key) return`).
-//   - Opaque / non-PII (P7): we never inspect or store cleartext PII; values carry hashes/opaque refs.
-//   - ≤4096 B/record: the framework caps the whole op at its max bytes before we run; we additionally
-//     assert the stringified record size as defense-in-depth.
-//
 // Never mutate this.op / this.value — clone first (this.protocol.safeClone), per Contract rules.
 //
-// WRITE MODEL (Markus, locked — see docs/HANDOFF-2026-06-20-trac-ledger-writes.md):
+// Write model:
 //   - Oracle assertions (valuation / usage_root / earn_root / retraction) are operator-computed truth →
 //     written FREE via the admin-signed `evidence_feature` Feature path (#writeEvidence).
 //   - `submission` is NOT an operator assertion — it is a provider/content datum, so it goes the normal
@@ -32,20 +21,16 @@
 import { Contract, Wallet } from 'trac-peer';
 import b4a from 'b4a';
 
-// VERSION-LOCK (Markus): every peer on the subnet MUST run the IDENTICAL contract/protocol or state
-// diverges ("INVALID SIGNATURE"). Only 1 indexer today, so changes are free now; bump this whenever the
-// applied logic changes and re-deploy to every connected peer in lockstep.
-//   v1 — Feature-only writer (all six record types free via evidence_feature).
-//   v2 — `submission` moved to the admin-gated PAID tx (submitEvidence); Feature path now oracle-only.
-//   v3 — an offer/consent `submission` (schemaVersion>=2) MUST carry consentSig/offerHash/offeredValue
-//        (consent provenance enforced on-ledger). schemaVersion 1 (single-phase submit) is unchanged.
+// Version lock: every peer on the subnet must run the identical contract/protocol, or state diverges
+// ("INVALID SIGNATURE"). Bump this whenever the applied logic changes, and redeploy to every connected
+// peer in lockstep.
 const CONTRACT_VERSION = 3;
 
 const VAULTS = Object.freeze({ fiat: true, crypto: true });
 const MAX_RECORD_BYTES = 4096;
 
 // Allowed record types → the fixed required-field set for each (deterministic, O(1) validation).
-// Mirrors PLAN §8 "Evidence record". `req` = required keys; everything is checked with direct
+// `req` = required keys; everything is checked with direct
 // property access (no loops over dynamic data).
 const RECORD_TYPES = Object.freeze({
   submission: { prefix: 'sub', req: ['schemaVersion', 'packId', 'ver', 'contentHash', 'merkleRoot', 'ownerKeyHash', 'okfVersion', 'license', 'ts'] },
@@ -53,7 +38,7 @@ const RECORD_TYPES = Object.freeze({
   usage_root: { prefix: 'usage', req: ['schemaVersion', 'epoch', 'merkleRoot', 'totalValueUsd', 'packsTouched', 'ts'] },
   earn_root:  { prefix: 'earn', req: ['schemaVersion', 'epoch', 'merkleRoot', 'ts'] },
   feedback:   { prefix: 'fb', req: ['schemaVersion', 'vault', 'packId', 'ver', 'outcomeSignal', 'ts'] },
-  // Takedown tombstone (docs/PLAN-2026-06-19-takedown.md). Supersedes a prior submission for all consumers.
+  // Supersedes a prior submission for all consumers.
   // Opaque: a fixed-size contentDigest + counts + reason code — never content.
   retraction: { prefix: 'ret', req: ['schemaVersion', 'packId', 'ver', 'reasonCode', 'contentDigest', 'ts'] },
 });
@@ -74,7 +59,7 @@ class EvidenceContract extends Contract {
 
     // The ADMIN-GATED PAID write path: a normal tx (costs TNK) carrying { key, record, adminSig }. Mapped
     // from a `submitEvidence` command by protocol.mapTxCommand. No schema — the value is validated
-    // manually below (the record is a dynamic §8 body; #validateAndStore enforces its full shape).
+    // manually below (the record body is dynamic; #validateAndStore enforces its full shape).
     this.addFunction('submitEvidence');
 
     // Read-only helper (no writes) — surfaced to peers through the protocol's read commands/API.
@@ -90,8 +75,8 @@ class EvidenceContract extends Contract {
     const key = this.op?.key;
     const rec = this.value; // = this.op.value
 
-    // `submission` is no longer writable via the FREE Feature — it must come through the admin-gated PAID
-    // tx (submitEvidence). Reject any submission attempting the oracle path; oracles only here.
+    // Submissions are not written through the free Feature; they come through the admin-gated paid tx
+    // (submitEvidence). Reject any submission that arrives on the oracle path; this path is oracles only.
     if (typeof key === 'string') {
       const p = this.#parseKey(key);
       if (p !== null && p.type === 'submission') return;
@@ -116,18 +101,18 @@ class EvidenceContract extends Contract {
     let ok = true;
     for (let i = 0; i < spec.req.length; i++) { if (rec[spec.req[i]] === undefined) { ok = false; break; } }
     if (!ok) return; // bounded by the fixed schema (constant length), not data — still O(1).
-    // v3 — an offer/consent submission (schemaVersion>=2) MUST carry its consent provenance. Single-phase
-    // submissions (schemaVersion 1) are unaffected. PRESENCE-only + deterministic (the engine verifies the
-    // signature off the VM); keeps the contract loopless and replay-stable.
+    // A consent submission (schemaVersion >= 2) must carry its consent provenance. Single-phase submissions
+    // (schemaVersion 1) do not. This is a presence-only, deterministic check (the signature itself is
+    // verified off the VM, by the writer), which keeps the contract loopless and replay-stable.
     if (parsed.type === 'submission' && Number(rec.schemaVersion) >= 2) {
       if (rec.consentSig === undefined || rec.offerHash === undefined || rec.offeredValue === undefined) return;
     }
 
-    // 2b) M1 — the record BODY must agree with its KEY (provenance integrity). A signed op must not be
-    // able to store under key ev/<v>/sub/A/1 while its value claims packId B / ver 2 (a consumer keying
-    // off the body would trust the wrong identity). Same for the epoch in usage/earn roots. O(1) string
-    // compares. `ts` must be a finite number within FIXED bounds — never a wall-clock check (the contract
-    // is deterministic; comparing to Date.now() would diverge across indexer replays).
+    // 2b) The record body must agree with its key (provenance integrity). A signed op must not be able to
+    // store under key ev/<v>/sub/A/1 while its value claims packId B / ver 2, since a consumer keying off
+    // the body would trust the wrong identity. Same for the epoch in usage/earn roots. O(1) string compares.
+    // `ts` must be a finite number within fixed bounds, never a wall-clock check: the contract is
+    // deterministic, so comparing to Date.now() would diverge across indexer replays.
     const parts = key.split('/');
     if (parsed.type === 'submission' || parsed.type === 'valuation' || parsed.type === 'retraction') {
       if (String(rec.packId) !== parts[3] || String(rec.ver) !== parts[4]) return;

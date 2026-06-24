@@ -16,7 +16,7 @@ const exit = (code) => { try { fs.writeFileSync(OUT, lines.join('\n') + `\nEXIT 
 let fails = 0;
 const ok = (c, label) => { const l = `  ${c ? 'PASS' : 'FAIL'}  ${label}`; console.log(l); lines.push(l); if (!c) fails++; };
 
-console.log('== tk-evidence-peer bare/Pear selftest ==');
+console.log('== sauce-evidence-peer bare/Pear selftest ==');
 ok(typeof b4a.from === 'function' && typeof b4a.byteLength === 'function', 'b4a resolves (from/byteLength)');
 ok(typeof Wallet === 'function' && typeof Wallet.verify === 'function', "trac-peer 'Wallet' + static verify resolve");
 ok(typeof EvidenceContract === 'function' && typeof EvidenceProtocol === 'function' && typeof EvidenceFeature === 'function', 'contract/protocol/feature modules load under bare');

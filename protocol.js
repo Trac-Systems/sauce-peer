@@ -1,13 +1,13 @@
-// Sauce EVIDENCE LEDGER protocol (PLAN §8). Pairs with contract.js. The ONE tx command we
-// map is `submitEvidence` — the admin-gated PAID submission write (the contract verifies the admin
-// signature carried in the value). Everything else returns null (oracle writes — valuation/usage/earn/
-// retraction — happen FREE via the admin-signed `evidence_feature` path, off the tx rail). Reads are
-// exposed free via the protocol API (extendApi → getEvidence / listEvidence) and `/get` + `/list` console
-// commands; the peer's localhost HTTP control endpoint (index.js §7b) re-exposes them so code OUTSIDE the
-// Pear/bare process (a Node app, curl, a 3rd-party reader) can iterate + retrieve ledger data over HTTP.
+// Evidence-ledger protocol. Pairs with contract.js. The one transaction command it maps is
+// `submitEvidence`: the admin-gated paid submission write, where the contract verifies the admin signature
+// carried in the value. Everything else returns null. The oracle writes (valuation, usage, earn,
+// retraction) go through the admin-signed `evidence_feature` path, off the transaction rail. Reads are free
+// via the protocol API (extendApi: getEvidence / listEvidence) and the `/get` + `/list` console commands;
+// the peer's HTTP control endpoint re-exposes them, so code outside the Pear/bare process (a Node app, curl,
+// a reader) can iterate and retrieve ledger data over HTTP.
 //
-// RUNTIME: runs in the contract engine under Pear/bare — keep it deterministic + bare-safe (no node:,
-// no global Buffer; use b4a). Import resolves via the Pear app deps ('trac-peer').
+// Runtime: this runs in the contract engine under Pear/bare, so it stays deterministic and bare-safe (no
+// node: builtins, no global Buffer; use b4a). Imports resolve through the Pear app's deps ('trac-peer').
 import { Protocol } from 'trac-peer';
 import b4a from 'b4a';
 

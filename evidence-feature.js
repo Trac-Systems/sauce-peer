@@ -1,18 +1,18 @@
-// Sauce EVIDENCE FEATURE (PLAN §8 oracle). The operator's FREE write path for oracle
-// assertions: valuation / usage_root / earn_root / retraction. Extends trac-peer's Feature: `append(key,
-// value)` signs `JSON.stringify(value)+nonce` with the peer wallet and appends an admin-signed `feature`
-// op; the contract's `evidence_feature` handler validates + dedups + O(1)-puts it (see contract.js).
-// Writes are TNK-FREE (the feature path never touches the MSB).
+// Evidence Feature: the operator's free write path for oracle assertions (valuation, usage_root,
+// earn_root, retraction). It extends trac-peer's Feature: `append(key, value)` signs
+// `JSON.stringify(value)+nonce` with the peer wallet and appends an admin-signed `feature` op, which the
+// contract's `evidence_feature` handler validates, dedups, and stores (see contract.js). These writes are
+// TNK-free; the Feature path never touches the MSB.
 //
-// NOTE: `submission` is NO LONGER written here — it moved to the admin-gated PAID tx (submitEvidence,
-// driven by the control endpoint in index.js). The submission() builder below stays only as a reference
-// for the record shape; the contract rejects a submission that arrives via this Feature path.
+// Submissions do not go through this path. They are written by the admin-gated paid tx (submitEvidence),
+// driven by the control endpoint in index.js. The submission() builder below documents the record shape;
+// the contract rejects a submission that arrives via the Feature path.
 //
-// Requirements for a write to APPLY: the running peer must be (a) the subnet `admin` (the op signature
-// is verified against the `admin` entry) and (b) base-writable. The operator node is admin + indexer.
+// For a write to apply, the running peer must be (a) the subnet `admin` (the op signature is verified
+// against the `admin` entry) and (b) base-writable. The operator node is both admin and indexer.
 //
-// `start()`/`stop()` are inert: writes are emitted explicitly by the engine/rollers (valuation on
-// scoring, usage/earn roots per epoch, retraction on takedown).
+// `start()`/`stop()` are inert: writes are emitted explicitly (valuation on scoring, usage/earn roots per
+// epoch, retraction on takedown).
 import { Feature } from 'trac-peer';
 
 export class EvidenceFeature extends Feature {
@@ -22,8 +22,8 @@ export class EvidenceFeature extends Feature {
     await this.append(key, value);
   }
 
-  // Reference builder for the §8 submission record shape (NOT used as a writer anymore — submission is a
-  // paid admin-gated tx; the contract rejects submission via the Feature). Kept for parity/tests.
+  // Documents the submission record shape. This is not a writer: submissions go through the admin-gated
+  // paid tx, and the contract rejects a submission sent via the Feature path.
   async submission(vault, packId, ver, fields) {
     const key = `ev/${vault}/sub/${packId}/${ver}`;
     await this.append(key, { type: 'submission', schemaVersion: 1, vault, packId, ver, ts: Date.now(), ...fields });
@@ -48,9 +48,9 @@ export class EvidenceFeature extends Feature {
     return key;
   }
 
-  // Takedown tombstone (docs/PLAN-2026-06-19-takedown.md). The ledger is append-only — a Retraction is a
-  // NEW immutable record that supersedes a prior Submission for all consumers (the content itself was
-  // never on the ledger; only hashes). Fields are opaque (content hashes, reason code, counts) — no PII.
+  // Takedown tombstone. The ledger is append-only, so a retraction is a new immutable record that
+  // supersedes a prior submission for all consumers (the content itself is never on the ledger, only
+  // hashes). Fields are opaque (content hashes, reason code, counts); no PII.
   async retraction(vault, packId, ver, fields) {
     const key = `ev/${vault}/ret/${packId}/${ver}`;
     await this.append(key, { type: 'retraction', schemaVersion: 1, vault, packId, ver, ts: Date.now(), ...fields });
