@@ -1,4 +1,4 @@
-# Sauce Evidence Ledger — read-only access (3rd-party how-to)
+# Sauce Evidence - Trac Network Subnet
 
 This guide is for developers who want to **independently read the Sauce evidence ledger**:
 run your own read-only node, sync the ledger from the network, and iterate/retrieve records over a small
