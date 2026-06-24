@@ -1,0 +1,11 @@
+# deps (regenerate with `npm ci`)
+node_modules/
+
+# local runtime state (regenerable)
+stores/
+local-state/
+*.log
+
+# os/editor
+.DS_Store
+.idea/
