@@ -35,16 +35,33 @@ hashes, counts, and economic totals — never raw content.
 
 ## 2. Prerequisites
 
-The node is a **Pear / bare app** (not a plain Node program), so it runs under the Pear runtime.
+Runs on **Linux and macOS**. You need **Node.js 20+** and **git**. The node is a **Pear / bare app** (not a
+plain Node program), so it runs under the Pear runtime. There are no native `node-gyp` builds, so `npm ci`
+installs the same vetted dependency tree on either OS.
 
-1. **Install Pear** (once):
+1. **Install the Pear runtime** (once). Pear ships as an npm package that bootstraps a self-updating runtime:
    ```sh
    npm i -g pear
-   pear            # first run initializes the runtime
+   ```
+   > **Linux / no sudo:** if `npm i -g` fails with `EACCES` (the global prefix is root-owned), install into a
+   > user-local prefix instead:
+   > ```sh
+   > npm config set prefix ~/.npm-global
+   > export PATH="$HOME/.npm-global/bin:$PATH"      # add to ~/.bashrc to persist
+   > npm i -g pear
+   > ```
+
+2. **Finish the runtime install and put it on PATH.** The first `pear` run downloads the platform, then asks
+   you to add its runtime `bin` to your PATH:
+   ```sh
+   pear                                             # one-time runtime download
+   export PATH="$HOME/.config/pear/bin:$PATH"       # Linux path (add to your shell profile);
+                                                    # macOS prints its own path — use what it tells you
+   pear versions                                    # verify — note: use `pear versions`, not `pear --version`
    ```
    See the [Pear docs](https://docs.pears.com/) for details.
 
-2. **Clone this repo and install** with **`npm ci`**, not `npm install`:
+3. **Clone this repo and install** with **`npm ci`**, not `npm install`:
    ```sh
    git clone https://github.com/Trac-Systems/sauce-peer.git
    cd sauce-peer
